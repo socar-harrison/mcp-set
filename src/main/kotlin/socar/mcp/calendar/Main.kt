@@ -35,4 +35,9 @@ fun main() = runBlocking {
         System.out.asSink().buffered()
     )
     server.connect(transport)
+
+    // stdin이 닫힐 때까지 서버 유지
+    while (System.`in`.available() >= 0) {
+        kotlinx.coroutines.delay(100)
+    }
 }
