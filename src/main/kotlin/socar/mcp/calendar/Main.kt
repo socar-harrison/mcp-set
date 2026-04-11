@@ -11,6 +11,13 @@ import kotlinx.io.asSource
 import kotlinx.io.buffered
 
 fun main() = runBlocking {
+    val auth = GoogleAuth()
+
+    // MCP transport 연결 전에 인증을 먼저 완료
+    System.err.println("[google-calendar-mcp] 인증 상태 확인 중...")
+    auth.ensureAuthenticated()
+    System.err.println("[google-calendar-mcp] 인증 완료! MCP 서버를 시작합니다.")
+
     val server = Server(
         serverInfo = Implementation(name = "google-calendar-mcp", version = "1.0.0"),
         options = ServerOptions(
@@ -20,7 +27,6 @@ fun main() = runBlocking {
         )
     )
 
-    val auth = GoogleAuth()
     val client = CalendarClient(auth)
     registerTools(server, client)
 

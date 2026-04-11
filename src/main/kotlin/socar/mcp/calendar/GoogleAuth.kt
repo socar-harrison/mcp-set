@@ -46,6 +46,14 @@ class GoogleAuth {
     private val tokenFile = File(System.getProperty("user.home"), ".calendar-mcp/token.json")
     private var currentToken: StoredToken? = null
 
+    /**
+     * MCP transport 연결 전에 호출하여 인증을 미리 완료한다.
+     * 토큰이 없으면 브라우저를 열어 OAuth 인증을 진행한다.
+     */
+    fun ensureAuthenticated() {
+        getAccessToken()
+    }
+
     fun getAccessToken(): String {
         val token = currentToken ?: loadToken()
         if (token != null && token.expiresAt > System.currentTimeMillis() + 60_000) {
@@ -127,10 +135,8 @@ class GoogleAuth {
         ).formEncode()
 
         System.err.println("브라우저에서 Google 로그인을 진행해주세요...")
-        if (Desktop.isDesktopSupported()) {
-            Desktop.getDesktop().browse(URI.create(authUrl))
-        } else {
-            System.err.println("브라우저를 열 수 없습니다. 아래 URL을 직접 열어주세요:")
+        if (!openBrowser(authUrl)) {
+            System.err.println("브라우저를 자동으로 열 수 없습니다. 아래 URL을 직접 열어주세요:")
             System.err.println(authUrl)
         }
 
@@ -165,6 +171,27 @@ class GoogleAuth {
         )
         saveToken(stored)
         return stored.accessToken
+    }
+}
+
+private fun openBrowser(url: String): Boolean {
+    val os = System.getProperty("os.name").lowercase()
+    return try {
+        when {
+            os.contains("mac") -> ProcessBuilder("open", url).start()
+            os.contains("linux") -> ProcessBuilder("xdg-open", url).start()
+            os.contains("win") -> ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", url).start()
+            else -> {
+                if (Desktop.isDesktopSupported()) {
+                    Desktop.getDesktop().browse(URI.create(url))
+                } else {
+                    return false
+                }
+            }
+        }
+        true
+    } catch (e: Exception) {
+        false
     }
 }
 
