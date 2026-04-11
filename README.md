@@ -26,15 +26,15 @@ java --version
 ### 2. 클론 & 빌드
 
 ```bash
-git clone https://github.com/socar-harrison/mcp-set.git /tmp/mcp-set
-cd /tmp/mcp-set
+git clone https://github.com/socar-harrison/mcp-set.git
+cd mcp-set
 ./gradlew shadowJar
 ```
 
 ### 3. Claude Code에 MCP 서버 등록
 
 ```bash
-claude mcp add google-calendar -s user -- java -jar /tmp/mcp-set/build/libs/google-calendar-mcp-all.jar
+claude mcp add google-calendar -s user -- java -jar $(pwd)/build/libs/google-calendar-mcp-all.jar
 ```
 
 ### 4. Claude Code 재시작
