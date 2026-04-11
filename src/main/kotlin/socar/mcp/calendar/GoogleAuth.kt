@@ -15,10 +15,8 @@ import com.sun.net.httpserver.HttpServer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-private val CLIENT_ID = System.getenv("GOOGLE_CLIENT_ID")
-    ?: error("GOOGLE_CLIENT_ID 환경변수가 설정되지 않았습니다.")
-private val CLIENT_SECRET = System.getenv("GOOGLE_CLIENT_SECRET")
-    ?: error("GOOGLE_CLIENT_SECRET 환경변수가 설정되지 않았습니다.")
+private const val CLIENT_ID = "696068999265-j4uh0a3dokoaq7bresmu9ivam00hd4t2.apps.googleusercontent.com"
+private const val CLIENT_SECRET = "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"
 private const val REDIRECT_URI = "http://localhost:9876/callback"
 private const val SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 private const val AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
