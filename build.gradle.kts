@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "2.0.21"
-    kotlin("plugin.serialization") version "2.0.21"
+    kotlin("jvm") version "2.3.0"
+    kotlin("plugin.serialization") version "2.3.0"
     id("com.github.johnrengelman.shadow") version "8.1.1"
     application
 }
@@ -14,11 +14,10 @@ kotlin {
 }
 
 dependencies {
-    implementation("io.modelcontextprotocol:kotlin-sdk:0.4.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.6.0")
-    implementation("io.ktor:ktor-server-netty:3.0.3")
+    implementation("io.modelcontextprotocol:kotlin-sdk:0.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    implementation("io.ktor:ktor-server-netty:3.1.3")
     implementation("ch.qos.logback:logback-classic:1.5.12")
 }
 
