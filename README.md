@@ -2,12 +2,18 @@
 
 SOCAR 앱 배포 캘린더를 Claude Code에서 조회할 수 있는 MCP 서버입니다.
 
-## 사전 요구사항
+## 설치 (원라인)
 
-- macOS (다른 OS는 미검증)
-- [Claude Code](https://claude.ai/claude-code)
+```bash
+curl -sL https://raw.githubusercontent.com/socar-harrison/mcp-set/main/install.sh | bash
+```
 
-## 설치
+이 스크립트가 자동으로:
+1. Java 21 확인 (없으면 Homebrew로 설치)
+2. 최신 JAR 다운로드
+3. Claude Code에 MCP 서버 등록
+
+## 수동 설치
 
 ### 1. Java 21 설치
 
@@ -16,25 +22,20 @@ brew install openjdk@21
 sudo ln -sfn $(brew --prefix openjdk@21)/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 ```
 
-설치 확인:
+### 2. JAR 다운로드
+
+[Releases](https://github.com/socar-harrison/mcp-set/releases/latest) 에서 `google-calendar-mcp-all.jar`를 다운로드합니다.
 
 ```bash
-java --version
-# openjdk 21.x.x 가 출력되면 성공
-```
-
-### 2. 클론 & 빌드
-
-```bash
-git clone https://github.com/socar-harrison/mcp-set.git
-cd mcp-set
-./gradlew shadowJar
+mkdir -p ~/.local/lib
+curl -sL https://github.com/socar-harrison/mcp-set/releases/latest/download/google-calendar-mcp-all.jar \
+  -o ~/.local/lib/google-calendar-mcp-all.jar
 ```
 
 ### 3. Claude Code에 MCP 서버 등록
 
 ```bash
-claude mcp add google-calendar -s user -- java -jar $(pwd)/build/libs/google-calendar-mcp-all.jar
+claude mcp add google-calendar -s user -- java -jar ~/.local/lib/google-calendar-mcp-all.jar
 ```
 
 ### 4. Claude Code 재시작
@@ -66,3 +67,12 @@ Claude Code에서 다음과 같이 질문하면 됩니다:
 - "앱 배포 일정 알려줘"
 - "다음 달 배포 일정 검색해줘"
 - "내 캘린더 목록 보여줘"
+
+## 개발자용: 직접 빌드
+
+```bash
+git clone https://github.com/socar-harrison/mcp-set.git
+cd mcp-set
+./gradlew shadowJar
+claude mcp add google-calendar -s user -- java -jar $(pwd)/build/libs/google-calendar-mcp-all.jar
+```
