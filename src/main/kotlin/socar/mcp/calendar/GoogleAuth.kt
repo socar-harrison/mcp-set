@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 private const val CLIENT_ID = "696068999265-j4uh0a3dokoaq7bresmu9ivam00hd4t2.apps.googleusercontent.com"
 private const val CLIENT_SECRET = "***REMOVED***"
 private const val REDIRECT_URI = "http://localhost:9876/callback"
-private const val SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+private const val SCOPE = "https://www.googleapis.com/auth/calendar.events"
 private const val AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 private const val TOKEN_URL = "https://oauth2.googleapis.com/token"
 
