@@ -11,6 +11,10 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.awt.Desktop
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
+import java.security.SecureRandom
+import java.util.Base64
 import com.sun.net.httpserver.HttpServer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -73,8 +77,20 @@ class GoogleAuth {
     }
 
     private fun saveToken(stored: StoredToken) {
-        tokenFile.parentFile.mkdirs()
+        val dir = tokenFile.parentFile.toPath()
+        if (!Files.exists(dir)) {
+            Files.createDirectories(dir)
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"))
+        }
         tokenFile.writeText(json.encodeToString(StoredToken.serializer(), stored))
+        try {
+            Files.setPosixFilePermissions(
+                tokenFile.toPath(),
+                PosixFilePermissions.fromString("rw-------")
+            )
+        } catch (_: UnsupportedOperationException) {
+            // Windows: POSIX 미지원, 홈 디렉토리 ACL에 의존
+        }
         currentToken = stored
     }
 
@@ -107,13 +123,28 @@ class GoogleAuth {
         val latch = CountDownLatch(1)
         var authCode: String? = null
 
-        val server = HttpServer.create(InetSocketAddress(9876), 0)
+        // CSRF 방지를 위한 state 파라미터 생성
+        val stateBytes = ByteArray(32)
+        SecureRandom().nextBytes(stateBytes)
+        val expectedState = Base64.getUrlEncoder().withoutPadding().encodeToString(stateBytes)
+
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 9876), 0)
         server.createContext("/callback") { exchange ->
             val query = exchange.requestURI.query ?: ""
             val params = query.split("&").associate {
                 val (k, v) = it.split("=", limit = 2)
                 k to v
             }
+
+            // state 검증으로 CSRF 방지
+            val returnedState = params["state"]
+            if (returnedState != expectedState) {
+                val error = "인증 실패: state 불일치 (CSRF 의심)"
+                exchange.sendResponseHeaders(403, error.toByteArray().size.toLong())
+                exchange.responseBody.use { it.write(error.toByteArray()) }
+                return@createContext
+            }
+
             authCode = params["code"]
 
             val html = "<html><body><h2>Calendar MCP 인증 완료!</h2><p>이 창을 닫아도 됩니다.</p></body></html>"
@@ -129,7 +160,8 @@ class GoogleAuth {
             "response_type" to "code",
             "scope" to SCOPE,
             "access_type" to "offline",
-            "prompt" to "consent"
+            "prompt" to "consent",
+            "state" to expectedState
         ).formEncode()
 
         System.err.println("브라우저에서 Google 로그인을 진행해주세요...")
