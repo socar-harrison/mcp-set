@@ -5,47 +5,89 @@ REPO="socar-harrison/mcp-set"
 JAR_NAME="google-calendar-mcp-all.jar"
 INSTALL_DIR="$HOME/.local/lib"
 JAR_PATH="$INSTALL_DIR/$JAR_NAME"
+JDK_DIR="$INSTALL_DIR/jdk-21"
+JAVA_BIN="$JDK_DIR/bin/java"
 
 echo "=== Google Calendar MCP Server 설치 ==="
 echo ""
 
-# 1. Java 확인 및 설치
-if ! command -v java &>/dev/null; then
-  echo "[1/3] Java가 없습니다. 설치 중..."
-  if command -v brew &>/dev/null; then
-    brew install openjdk@21
-    sudo ln -sfn "$(brew --prefix openjdk@21)/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-21.jdk
-  else
-    echo "❌ Homebrew가 없어 Java를 자동 설치할 수 없습니다."
-    echo "   brew install openjdk@21 또는 https://adoptium.net 에서 설치해주세요."
+# 1. OS/아키텍처 감지
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+case "$OS" in
+  darwin) ADOPTIUM_OS="mac" ;;
+  linux)  ADOPTIUM_OS="linux" ;;
+  *)
+    echo "❌ 지원하지 않는 OS입니다: $OS"
+    exit 1
+    ;;
+esac
+
+case "$ARCH" in
+  arm64|aarch64) ADOPTIUM_ARCH="aarch64" ;;
+  x86_64|amd64)  ADOPTIUM_ARCH="x64" ;;
+  *)
+    echo "❌ 지원하지 않는 아키텍처입니다: $ARCH"
+    exit 1
+    ;;
+esac
+
+# 2. 격리된 JDK 21 설치 (시스템 Java에 영향 없음)
+if [ -x "$JAVA_BIN" ] && "$JAVA_BIN" -version 2>&1 | grep -q '"21\.'; then
+  echo "[1/3] JDK 21 ✓ (이미 설치됨)"
+else
+  echo "[1/3] JDK 21 다운로드 중... (~200MB, 최초 1회만)"
+  mkdir -p "$INSTALL_DIR"
+
+  DOWNLOAD_URL="https://api.adoptium.net/v3/binary/latest/21/ga/${ADOPTIUM_OS}/${ADOPTIUM_ARCH}/jdk/hotspot/normal/eclipse?project=jdk"
+
+  TMP_TAR=$(mktemp /tmp/jdk-21-XXXXXX.tar.gz)
+  TMP_EXTRACT=$(mktemp -d /tmp/jdk-extract-XXXXXX)
+  trap 'rm -rf "$TMP_TAR" "$TMP_EXTRACT"' EXIT
+
+  curl -sL "$DOWNLOAD_URL" -o "$TMP_TAR"
+  tar xzf "$TMP_TAR" -C "$TMP_EXTRACT"
+
+  EXTRACTED=$(find "$TMP_EXTRACT" -maxdepth 1 -type d -name "jdk-*" | head -1)
+  if [ -z "$EXTRACTED" ]; then
+    echo "❌ JDK 압축 해제에 실패했습니다."
     exit 1
   fi
-else
-  echo "[1/3] Java ✓ ($(java --version 2>&1 | head -1))"
+
+  rm -rf "$JDK_DIR"
+  # macOS Adoptium tar.gz: Contents/Home 구조 처리
+  if [ -d "$EXTRACTED/Contents/Home/bin" ]; then
+    mv "$EXTRACTED/Contents/Home" "$JDK_DIR"
+  else
+    mv "$EXTRACTED" "$JDK_DIR"
+  fi
+
+  echo "      → $JDK_DIR"
 fi
 
-# 2. JAR 다운로드
+# 3. JAR 다운로드
 echo "[2/3] 최신 JAR 다운로드 중..."
 mkdir -p "$INSTALL_DIR"
 
-DOWNLOAD_URL=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest" \
+JAR_URL=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest" \
   | grep "browser_download_url.*$JAR_NAME" \
   | cut -d '"' -f 4)
 
-if [ -z "$DOWNLOAD_URL" ]; then
+if [ -z "$JAR_URL" ]; then
   echo "❌ 릴리스에서 JAR을 찾을 수 없습니다."
   echo "   https://github.com/$REPO/releases 를 확인해주세요."
   exit 1
 fi
 
-curl -sL "$DOWNLOAD_URL" -o "$JAR_PATH"
-echo "   → $JAR_PATH"
+curl -sL "$JAR_URL" -o "$JAR_PATH"
+echo "      → $JAR_PATH"
 
-# 3. Claude Code에 MCP 서버 등록
+# 4. Claude Code에 MCP 서버 등록 (격리된 Java로 실행)
 echo "[3/3] Claude Code에 MCP 서버 등록 중..."
 if command -v claude &>/dev/null; then
   claude mcp remove google-calendar 2>/dev/null || true
-  claude mcp add google-calendar -s user -- java -jar "$JAR_PATH"
+  claude mcp add google-calendar -s user -- "$JAVA_BIN" -jar "$JAR_PATH"
   echo ""
   echo "=== 설치 완료! ==="
   echo ""
@@ -59,5 +101,5 @@ else
   echo "Claude Code가 설치되어 있지 않습니다."
   echo "Claude Code 설치 후 아래 명령어를 실행해주세요:"
   echo ""
-  echo "  claude mcp add google-calendar -s user -- java -jar $JAR_PATH"
+  echo "  claude mcp add google-calendar -s user -- $JAVA_BIN -jar $JAR_PATH"
 fi
