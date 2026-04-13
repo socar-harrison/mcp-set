@@ -13,6 +13,7 @@ import java.net.http.HttpResponse
 import java.awt.Desktop
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import com.sun.net.httpserver.HttpServer
@@ -20,7 +21,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 private const val CLIENT_ID = "696068999265-j4uh0a3dokoaq7bresmu9ivam00hd4t2.apps.googleusercontent.com"
-private const val CLIENT_SECRET = "***REMOVED***"
 private const val REDIRECT_URI = "http://localhost:9876/callback"
 private const val SCOPE = "https://www.googleapis.com/auth/calendar.events"
 private const val AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -97,7 +97,6 @@ class GoogleAuth {
     private fun refreshAccessToken(refreshToken: String): String {
         val body = listOf(
             "client_id" to CLIENT_ID,
-            "client_secret" to CLIENT_SECRET,
             "refresh_token" to refreshToken,
             "grant_type" to "refresh_token"
         ).formEncode()
@@ -127,6 +126,13 @@ class GoogleAuth {
         val stateBytes = ByteArray(32)
         SecureRandom().nextBytes(stateBytes)
         val expectedState = Base64.getUrlEncoder().withoutPadding().encodeToString(stateBytes)
+
+        // PKCE: code_verifier (43~128자 랜덤 문자열) 생성
+        val verifierBytes = ByteArray(32)
+        SecureRandom().nextBytes(verifierBytes)
+        val codeVerifier = Base64.getUrlEncoder().withoutPadding().encodeToString(verifierBytes)
+        val codeChallenge = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(MessageDigest.getInstance("SHA-256").digest(codeVerifier.toByteArray()))
 
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 9876), 0)
         server.createContext("/callback") { exchange ->
@@ -161,7 +167,9 @@ class GoogleAuth {
             "scope" to SCOPE,
             "access_type" to "offline",
             "prompt" to "consent",
-            "state" to expectedState
+            "state" to expectedState,
+            "code_challenge" to codeChallenge,
+            "code_challenge_method" to "S256"
         ).formEncode()
 
         System.err.println("브라우저에서 Google 로그인을 진행해주세요...")
@@ -174,16 +182,16 @@ class GoogleAuth {
         server.stop(0)
 
         val code = authCode ?: error("인증 시간이 초과되었습니다. 다시 시도해주세요.")
-        return exchangeCodeForToken(code)
+        return exchangeCodeForToken(code, codeVerifier)
     }
 
-    private fun exchangeCodeForToken(code: String): String {
+    private fun exchangeCodeForToken(code: String, codeVerifier: String): String {
         val body = listOf(
             "client_id" to CLIENT_ID,
-            "client_secret" to CLIENT_SECRET,
             "code" to code,
             "redirect_uri" to REDIRECT_URI,
-            "grant_type" to "authorization_code"
+            "grant_type" to "authorization_code",
+            "code_verifier" to codeVerifier
         ).formEncode()
 
         val request = HttpRequest.newBuilder()
