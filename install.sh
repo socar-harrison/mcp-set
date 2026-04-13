@@ -52,11 +52,13 @@ else
   }
   tar xzf "$TMP_TAR" -C "$TMP_EXTRACT"
 
-  EXTRACTED=$(find "$TMP_EXTRACT" -maxdepth 1 -type d -name "jdk-*" | head -1)
-  if [ -z "$EXTRACTED" ]; then
-    echo "❌ JDK 압축 해제에 실패했습니다."
+  # bin/java를 찾아서 JDK 홈 디렉토리를 역추적 (구조에 무관하게 동작)
+  JAVA_FOUND=$(find "$TMP_EXTRACT" -path "*/bin/java" -type f | head -1)
+  if [ -z "$JAVA_FOUND" ]; then
+    echo "❌ JDK에서 java 바이너리를 찾을 수 없습니다."
     exit 1
   fi
+  JDK_HOME=$(dirname "$(dirname "$JAVA_FOUND")")
 
   # 추출된 JDK가 실제 21인지 검증
   if ! "$JDK_HOME/bin/java" -version 2>&1 | grep -q '"21\.'; then
@@ -65,12 +67,7 @@ else
   fi
 
   rm -rf "$JDK_DIR"
-  # macOS Adoptium tar.gz: Contents/Home 구조 처리
-  if [ -d "$EXTRACTED/Contents/Home/bin" ]; then
-    mv "$EXTRACTED/Contents/Home" "$JDK_DIR"
-  else
-    mv "$EXTRACTED" "$JDK_DIR"
-  fi
+  mv "$JDK_HOME" "$JDK_DIR"
 
   echo "      → $JDK_DIR"
 fi
