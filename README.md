@@ -9,20 +9,15 @@ curl -sL https://raw.githubusercontent.com/socar-harrison/mcp-set/main/install.s
 ```
 
 이 스크립트가 자동으로:
-1. Java 21 확인 (없으면 Homebrew로 설치)
+1. JDK 21을 `~/.local/lib/jdk-21/`에 격리 설치 (시스템 Java에 영향 없음)
 2. 최신 JAR 다운로드
 3. Claude Code에 MCP 서버 등록
 
+> Homebrew, sudo 불필요. 기존 Java 환경에 영향을 주지 않습니다.
+
 ## 수동 설치
 
-### 1. Java 21 설치
-
-```bash
-brew install openjdk@21
-sudo ln -sfn $(brew --prefix openjdk@21)/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
-```
-
-### 2. JAR 다운로드
+### 1. JAR 다운로드
 
 [Releases](https://github.com/socar-harrison/mcp-set/releases/latest) 에서 `google-calendar-mcp-all.jar`를 다운로드합니다.
 
@@ -32,10 +27,23 @@ curl -sL https://github.com/socar-harrison/mcp-set/releases/latest/download/goog
   -o ~/.local/lib/google-calendar-mcp-all.jar
 ```
 
+### 2. JDK 21 설치
+
+이미 `~/.local/lib/jdk-21/`이 있다면 이 단계는 건너뛰세요.
+
+```bash
+# macOS Apple Silicon 기준. Intel은 aarch64 → x64로 변경
+curl -sL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/aarch64/jdk/hotspot/normal/eclipse?project=jdk" \
+  -o /tmp/jdk-21.tar.gz
+mkdir -p /tmp/jdk-extract && tar xzf /tmp/jdk-21.tar.gz -C /tmp/jdk-extract
+mv /tmp/jdk-extract/jdk-*/Contents/Home ~/.local/lib/jdk-21
+rm -rf /tmp/jdk-21.tar.gz /tmp/jdk-extract
+```
+
 ### 3. Claude Code에 MCP 서버 등록
 
 ```bash
-claude mcp add google-calendar -s user -- java -jar ~/.local/lib/google-calendar-mcp-all.jar
+claude mcp add google-calendar -s user -- ~/.local/lib/jdk-21/bin/java -jar ~/.local/lib/google-calendar-mcp-all.jar
 ```
 
 ### 4. Claude Code 재시작
