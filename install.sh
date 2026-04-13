@@ -46,12 +46,21 @@ else
   TMP_EXTRACT=$(mktemp -d /tmp/jdk-extract-XXXXXX)
   trap 'rm -rf "$TMP_TAR" "$TMP_EXTRACT"' EXIT
 
-  curl -sL "$DOWNLOAD_URL" -o "$TMP_TAR"
+  curl -fsSL "$DOWNLOAD_URL" -o "$TMP_TAR" || {
+    echo "❌ JDK 다운로드에 실패했습니다. 네트워크 연결을 확인해주세요."
+    exit 1
+  }
   tar xzf "$TMP_TAR" -C "$TMP_EXTRACT"
 
   EXTRACTED=$(find "$TMP_EXTRACT" -maxdepth 1 -type d -name "jdk-*" | head -1)
   if [ -z "$EXTRACTED" ]; then
     echo "❌ JDK 압축 해제에 실패했습니다."
+    exit 1
+  fi
+
+  # 추출된 JDK가 실제 21인지 검증
+  if ! "$JDK_HOME/bin/java" -version 2>&1 | grep -q '"21\.'; then
+    echo "❌ 다운로드된 JDK가 21 버전이 아닙니다."
     exit 1
   fi
 
@@ -66,21 +75,20 @@ else
   echo "      → $JDK_DIR"
 fi
 
-# 3. JAR 다운로드
+# 3. JAR 다운로드 (직접 URL 사용, API 호출 불필요)
 echo "[2/3] 최신 JAR 다운로드 중..."
 mkdir -p "$INSTALL_DIR"
 
-JAR_URL=$(curl -sL "https://api.github.com/repos/$REPO/releases/latest" \
-  | grep "browser_download_url.*$JAR_NAME" \
-  | cut -d '"' -f 4)
+JAR_URL="https://github.com/$REPO/releases/latest/download/$JAR_NAME"
 
-if [ -z "$JAR_URL" ]; then
-  echo "❌ 릴리스에서 JAR을 찾을 수 없습니다."
+TMP_JAR=$(mktemp "$INSTALL_DIR/$JAR_NAME.XXXXXX")
+curl -fsSL "$JAR_URL" -o "$TMP_JAR" || {
+  rm -f "$TMP_JAR"
+  echo "❌ JAR 다운로드에 실패했습니다."
   echo "   https://github.com/$REPO/releases 를 확인해주세요."
   exit 1
-fi
-
-curl -sL "$JAR_URL" -o "$JAR_PATH"
+}
+mv "$TMP_JAR" "$JAR_PATH"
 echo "      → $JAR_PATH"
 
 # 4. Claude Code에 MCP 서버 등록 (격리된 Java로 실행)
