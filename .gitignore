@@ -1,7 +1,9 @@
 build/
 .gradle/
+.kotlin/
 *.iml
 .idea/
 local.properties
-io/
 .env
+*.jar
+*.jar.sha256

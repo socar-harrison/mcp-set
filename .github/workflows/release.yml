@@ -12,20 +12,41 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Build shadow JAR
-        run: ./gradlew shadowJar
+      - name: Test and build Shadow JAR
+        run: ./gradlew clean test shadowJar
+
+      - name: Verify release artifact
+        run: |
+          test -f build/libs/protocol-codegen-mcp-all.jar
+          test -f skills/socar-protocol-codegen/SKILL.md
+
+      - name: Stage shared skill
+        run: cp skills/socar-protocol-codegen/SKILL.md build/libs/socar-protocol-codegen.SKILL.md
+
+      - name: Generate SHA-256 checksum
+        working-directory: build/libs
+        run: |
+          sha256sum protocol-codegen-mcp-all.jar > protocol-codegen-mcp-all.jar.sha256
+          sha256sum socar-protocol-codegen.SKILL.md > socar-protocol-codegen.SKILL.md.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/libs/google-calendar-mcp-all.jar
+          files: |
+            build/libs/protocol-codegen-mcp-all.jar
+            build/libs/protocol-codegen-mcp-all.jar.sha256
+            build/libs/socar-protocol-codegen.SKILL.md
+            build/libs/socar-protocol-codegen.SKILL.md.sha256
           generate_release_notes: true

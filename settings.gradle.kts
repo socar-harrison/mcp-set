@@ -1,1 +1,1 @@
-rootProject.name = "google-calendar-mcp"
+rootProject.name = "socar-protocol-codegen-mcp"
