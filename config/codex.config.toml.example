@@ -1,0 +1,9 @@
+[mcp_servers.socar-protocol-codegen]
+command = "/absolute/path/to/java"
+args = ["-jar", "/absolute/path/to/protocol-codegen-mcp-all.jar"]
+cwd = "/absolute/path/to/socar-android-library"
+env = { SOCAR_ANDROID_WORKSPACE = "/absolute/path/to/socar-android-library" }
+enabled = true
+enabled_tools = ["generate_protocol_data_classes"]
+startup_timeout_sec = 10
+tool_timeout_sec = 1800

@@ -1,110 +1,291 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-REPO="socar-harrison/mcp-set"
-JAR_NAME="google-calendar-mcp-all.jar"
-INSTALL_DIR="$HOME/.local/lib"
-JAR_PATH="$INSTALL_DIR/$JAR_NAME"
-JDK_DIR="$INSTALL_DIR/jdk-21"
-JAVA_BIN="$JDK_DIR/bin/java"
+readonly REPOSITORY="socar-harrison/mcp-set"
+readonly SERVER_NAME="socar-protocol-codegen"
+readonly JAR_NAME="protocol-codegen-mcp-all.jar"
+readonly CHECKSUM_NAME="${JAR_NAME}.sha256"
+readonly SKILL_ASSET_NAME="socar-protocol-codegen.SKILL.md"
+readonly SKILL_CHECKSUM_NAME="${SKILL_ASSET_NAME}.sha256"
 
-echo "=== Google Calendar MCP Server 설치 ==="
-echo ""
+INSTALL_DIR="${MCP_INSTALL_DIR:-${HOME:?HOME is not set}/.local/share/socar-protocol-codegen-mcp}"
+RELEASE_VERSION="${MCP_VERSION:-latest}"
+PROJECT_DIR=""
+CONFIGURE_CLIENTS=true
 
-# 1. OS/아키텍처 감지
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./install.sh --project-dir /absolute/path/to/socar-android-library [options]
+  ./install.sh --no-client-config [options]
 
-case "$OS" in
-  darwin) ADOPTIUM_OS="mac" ;;
-  linux)  ADOPTIUM_OS="linux" ;;
-  *)
-    echo "❌ 지원하지 않는 OS입니다: $OS"
-    exit 1
-    ;;
-esac
+Options:
+  --project-dir PATH    Android workspace used for project-scoped client setup
+  --version TAG         GitHub release tag (default: latest)
+  --install-dir PATH    JAR install directory
+  --no-client-config    Install the verified JAR without configuring clients
+  -h, --help            Show this help
 
-case "$ARCH" in
-  arm64|aarch64) ADOPTIUM_ARCH="aarch64" ;;
-  x86_64|amd64)  ADOPTIUM_ARCH="x64" ;;
-  *)
-    echo "❌ 지원하지 않는 아키텍처입니다: $ARCH"
-    exit 1
-    ;;
-esac
+Environment:
+  JAVA_BIN              Java 21 executable (default: java found on PATH)
+  MCP_VERSION           Release tag used when --version is omitted
+  MCP_INSTALL_DIR       Install directory used when --install-dir is omitted
+USAGE
+}
 
-# 2. 격리된 JDK 21 설치 (시스템 Java에 영향 없음)
-if [ -x "$JAVA_BIN" ] && "$JAVA_BIN" -version 2>&1 | grep -q '"21\.'; then
-  echo "[1/3] JDK 21 ✓ (이미 설치됨)"
-else
-  echo "[1/3] JDK 21 다운로드 중... (~200MB, 최초 1회만)"
-  mkdir -p "$INSTALL_DIR"
-
-  DOWNLOAD_URL="https://api.adoptium.net/v3/binary/latest/21/ga/${ADOPTIUM_OS}/${ADOPTIUM_ARCH}/jdk/hotspot/normal/eclipse?project=jdk"
-
-  TMP_TAR=$(mktemp /tmp/jdk-21-XXXXXX.tar.gz)
-  TMP_EXTRACT=$(mktemp -d /tmp/jdk-extract-XXXXXX)
-  trap 'rm -rf "$TMP_TAR" "$TMP_EXTRACT"' EXIT
-
-  curl -fsSL "$DOWNLOAD_URL" -o "$TMP_TAR" || {
-    echo "❌ JDK 다운로드에 실패했습니다. 네트워크 연결을 확인해주세요."
-    exit 1
-  }
-  tar xzf "$TMP_TAR" -C "$TMP_EXTRACT"
-
-  # bin/java를 찾아서 JDK 홈 디렉토리를 역추적 (구조에 무관하게 동작)
-  JAVA_FOUND=$(find "$TMP_EXTRACT" -path "*/bin/java" -type f | head -1)
-  if [ -z "$JAVA_FOUND" ]; then
-    echo "❌ JDK에서 java 바이너리를 찾을 수 없습니다."
-    exit 1
-  fi
-  JDK_HOME=$(dirname "$(dirname "$JAVA_FOUND")")
-
-  # 추출된 JDK가 실제 21인지 검증
-  if ! "$JDK_HOME/bin/java" -version 2>&1 | grep -q '"21\.'; then
-    echo "❌ 다운로드된 JDK가 21 버전이 아닙니다."
-    exit 1
-  fi
-
-  rm -rf "$JDK_DIR"
-  mv "$JDK_HOME" "$JDK_DIR"
-
-  echo "      → $JDK_DIR"
-fi
-
-# 3. JAR 다운로드 (직접 URL 사용, API 호출 불필요)
-echo "[2/3] 최신 JAR 다운로드 중..."
-mkdir -p "$INSTALL_DIR"
-
-JAR_URL="https://github.com/$REPO/releases/latest/download/$JAR_NAME"
-
-TMP_JAR=$(mktemp "$INSTALL_DIR/$JAR_NAME.XXXXXX")
-curl -fsSL "$JAR_URL" -o "$TMP_JAR" || {
-  rm -f "$TMP_JAR"
-  echo "❌ JAR 다운로드에 실패했습니다."
-  echo "   https://github.com/$REPO/releases 를 확인해주세요."
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
   exit 1
 }
-mv "$TMP_JAR" "$JAR_PATH"
-echo "      → $JAR_PATH"
 
-# 4. Claude Code에 MCP 서버 등록 (격리된 Java로 실행)
-echo "[3/3] Claude Code에 MCP 서버 등록 중..."
-if command -v claude &>/dev/null; then
-  claude mcp remove google-calendar 2>/dev/null || true
-  claude mcp add google-calendar -s user -- "$JAVA_BIN" -jar "$JAR_PATH"
-  echo ""
-  echo "=== 설치 완료! ==="
-  echo ""
-  echo "Claude Code를 재시작한 뒤, 캘린더 관련 질문을 하면"
-  echo "브라우저가 열리며 Google 인증이 진행됩니다."
-  echo "(@socar.kr 계정으로 로그인하세요)"
-else
-  echo ""
-  echo "=== JAR 다운로드 완료! ==="
-  echo ""
-  echo "Claude Code가 설치되어 있지 않습니다."
-  echo "Claude Code 설치 후 아래 명령어를 실행해주세요:"
-  echo ""
-  echo "  claude mcp add google-calendar -s user -- $JAVA_BIN -jar $JAR_PATH"
+while (($# > 0)); do
+  case "$1" in
+    --project-dir)
+      (($# >= 2)) || fail "--project-dir requires a path"
+      PROJECT_DIR="$2"
+      shift 2
+      ;;
+    --version)
+      (($# >= 2)) || fail "--version requires a release tag"
+      RELEASE_VERSION="$2"
+      shift 2
+      ;;
+    --install-dir)
+      (($# >= 2)) || fail "--install-dir requires a path"
+      INSTALL_DIR="$2"
+      shift 2
+      ;;
+    --no-client-config)
+      CONFIGURE_CLIENTS=false
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      fail "unknown option: $1"
+      ;;
+  esac
+done
+
+[[ "$RELEASE_VERSION" == "latest" || "$RELEASE_VERSION" =~ ^v[0-9][0-9A-Za-z._-]*$ ]] || \
+  fail "release tag must be 'latest' or start with v and contain only letters, digits, '.', '_' or '-'"
+
+if [[ "$CONFIGURE_CLIENTS" == true ]]; then
+  [[ -n "$PROJECT_DIR" ]] || fail "--project-dir is required unless --no-client-config is used"
+  [[ -d "$PROJECT_DIR" ]] || fail "project directory does not exist: $PROJECT_DIR"
+  PROJECT_DIR="$(cd -- "$PROJECT_DIR" && pwd -P)"
+  [[ -d "$PROJECT_DIR/.git" || -f "$PROJECT_DIR/.git" ]] || \
+    fail "project directory is not a Git workspace: $PROJECT_DIR"
+  [[ -f "$PROJECT_DIR/tools/api2-model/generate.kts" ]] || \
+    fail "tools/api2-model/generate.kts was not found in: $PROJECT_DIR"
 fi
+
+command -v curl >/dev/null 2>&1 || fail "curl is required"
+
+if [[ -n "${JAVA_BIN:-}" ]]; then
+  [[ -x "$JAVA_BIN" ]] || fail "JAVA_BIN is not executable: $JAVA_BIN"
+  JAVA_EXECUTABLE="$(cd -- "$(dirname -- "$JAVA_BIN")" && pwd -P)/$(basename -- "$JAVA_BIN")"
+else
+  JAVA_COMMAND="$(command -v java || true)"
+  [[ -n "$JAVA_COMMAND" ]] || fail "Java 21 is required. Install it first or set JAVA_BIN."
+  JAVA_EXECUTABLE="$(cd -- "$(dirname -- "$JAVA_COMMAND")" && pwd -P)/$(basename -- "$JAVA_COMMAND")"
+fi
+
+JAVA_VERSION_OUTPUT="$({ "$JAVA_EXECUTABLE" -version; } 2>&1)" || fail "failed to run: $JAVA_EXECUTABLE -version"
+JAVA_VERSION="$(printf '%s\n' "$JAVA_VERSION_OUTPUT" | sed -n '1s/.*version "\([^"]*\)".*/\1/p')"
+JAVA_MAJOR="${JAVA_VERSION%%.*}"
+[[ "$JAVA_MAJOR" == "21" ]] || fail "Java 21 is required (found: ${JAVA_VERSION:-unknown})"
+
+mkdir -p -- "$INSTALL_DIR"
+INSTALL_DIR="$(cd -- "$INSTALL_DIR" && pwd -P)"
+JAR_PATH="$INSTALL_DIR/$JAR_NAME"
+PREVIOUS_JAR_PATH="$JAR_PATH.previous"
+
+if [[ "$RELEASE_VERSION" == "latest" ]]; then
+  RELEASE_BASE_URL="https://github.com/$REPOSITORY/releases/latest/download"
+else
+  RELEASE_BASE_URL="https://github.com/$REPOSITORY/releases/download/$RELEASE_VERSION"
+fi
+
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/socar-protocol-codegen.XXXXXX")"
+STAGED_JAR=""
+STAGED_PREVIOUS=""
+cleanup() {
+  local exit_code=$?
+  [[ -z "$STAGED_JAR" || ! -e "$STAGED_JAR" ]] || rm -f -- "$STAGED_JAR"
+  [[ -z "$STAGED_PREVIOUS" || ! -e "$STAGED_PREVIOUS" ]] || rm -f -- "$STAGED_PREVIOUS"
+  rm -rf -- "$TEMP_DIR"
+  exit "$exit_code"
+}
+trap cleanup EXIT
+
+printf 'Downloading %s (%s)...\n' "$JAR_NAME" "$RELEASE_VERSION"
+curl --fail --location --show-error --silent --proto '=https' --proto-redir '=https' \
+  "$RELEASE_BASE_URL/$JAR_NAME" \
+  --output "$TEMP_DIR/$JAR_NAME"
+curl --fail --location --show-error --silent --proto '=https' --proto-redir '=https' \
+  "$RELEASE_BASE_URL/$CHECKSUM_NAME" \
+  --output "$TEMP_DIR/$CHECKSUM_NAME"
+if [[ "$CONFIGURE_CLIENTS" == true ]]; then
+  curl --fail --location --show-error --silent --proto '=https' --proto-redir '=https' \
+    "$RELEASE_BASE_URL/$SKILL_ASSET_NAME" \
+    --output "$TEMP_DIR/$SKILL_ASSET_NAME"
+  curl --fail --location --show-error --silent --proto '=https' --proto-redir '=https' \
+    "$RELEASE_BASE_URL/$SKILL_CHECKSUM_NAME" \
+    --output "$TEMP_DIR/$SKILL_CHECKSUM_NAME"
+fi
+
+sha256_of() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{ print $1 }'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{ print $1 }'
+  else
+    fail "sha256sum or shasum is required"
+  fi
+}
+
+verify_asset() {
+  local asset="$1"
+  local checksum="$2"
+  local expected
+  local actual
+
+  expected="$(awk 'NR == 1 { print $1 }' "$checksum" | tr '[:upper:]' '[:lower:]')"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || fail "invalid checksum file for: $(basename -- "$asset")"
+  actual="$(sha256_of "$asset" | tr '[:upper:]' '[:lower:]')"
+  [[ "$actual" == "$expected" ]] || \
+    fail "SHA-256 verification failed for $(basename -- "$asset"); installed files were not changed"
+}
+
+verify_asset "$TEMP_DIR/$JAR_NAME" "$TEMP_DIR/$CHECKSUM_NAME"
+if [[ "$CONFIGURE_CLIENTS" == true ]]; then
+  verify_asset "$TEMP_DIR/$SKILL_ASSET_NAME" "$TEMP_DIR/$SKILL_CHECKSUM_NAME"
+fi
+
+# Stage in the destination directory so the final rename is atomic on one filesystem.
+STAGED_JAR="$(mktemp "$INSTALL_DIR/.${JAR_NAME}.new.XXXXXX")"
+cp -- "$TEMP_DIR/$JAR_NAME" "$STAGED_JAR"
+chmod 0644 "$STAGED_JAR"
+
+if [[ -f "$JAR_PATH" ]]; then
+  STAGED_PREVIOUS="$(mktemp "$INSTALL_DIR/.${JAR_NAME}.previous.XXXXXX")"
+  cp -p -- "$JAR_PATH" "$STAGED_PREVIOUS"
+  mv -f -- "$STAGED_PREVIOUS" "$PREVIOUS_JAR_PATH"
+  STAGED_PREVIOUS=""
+fi
+
+mv -f -- "$STAGED_JAR" "$JAR_PATH"
+STAGED_JAR=""
+printf 'Verified and installed: %s\n' "$JAR_PATH"
+[[ ! -f "$PREVIOUS_JAR_PATH" ]] || printf 'Previous JAR retained: %s\n' "$PREVIOUS_JAR_PATH"
+
+install_skill_for_client() {
+  local client_home="$1"
+  local skill_dir="$client_home/skills/socar-protocol-codegen"
+  local skill_path="$skill_dir/SKILL.md"
+  local staged_skill
+
+  mkdir -p -- "$skill_dir"
+  staged_skill="$(mktemp "$skill_dir/.SKILL.md.new.XXXXXX")"
+  cp -- "$TEMP_DIR/$SKILL_ASSET_NAME" "$staged_skill"
+  chmod 0644 "$staged_skill"
+  if [[ -f "$skill_path" ]]; then
+    cp -p -- "$skill_path" "$skill_path.previous"
+  fi
+  mv -f -- "$staged_skill" "$skill_path"
+  printf 'Installed shared skill: %s\n' "$skill_path"
+}
+
+if [[ "$CONFIGURE_CLIENTS" == true ]]; then
+  CODEX_SKILL_HOME="${CODEX_HOME:-${HOME:?}/.codex}"
+  CLAUDE_SKILL_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  if [[ -d "$CODEX_SKILL_HOME" ]] || command -v codex >/dev/null 2>&1; then
+    install_skill_for_client "$CODEX_SKILL_HOME"
+  fi
+  if [[ -d "$CLAUDE_SKILL_HOME" ]] || command -v claude >/dev/null 2>&1; then
+    install_skill_for_client "$CLAUDE_SKILL_HOME"
+  fi
+fi
+
+client_command_hint() {
+  local client="$1"
+  if [[ "$client" == "claude" ]]; then
+    printf '  cd %q && claude mcp add --scope project %q -e %q -- %q -jar %q\n' \
+      "$PROJECT_DIR" "$SERVER_NAME" "SOCAR_ANDROID_WORKSPACE=$PROJECT_DIR" "$JAVA_EXECUTABLE" "$JAR_PATH"
+  else
+    printf '  codex mcp add %q --env %q -- %q -jar %q\n' \
+      "$SERVER_NAME" "SOCAR_ANDROID_WORKSPACE=$PROJECT_DIR" "$JAVA_EXECUTABLE" "$JAR_PATH"
+  fi
+}
+
+configure_claude() {
+  if ! command -v claude >/dev/null 2>&1; then
+    printf 'Claude Code CLI not found; skipped client configuration.\n'
+    client_command_hint claude
+    return
+  fi
+
+  local help_output
+  help_output="$(claude mcp add --help 2>&1 || true)"
+  if [[ "$help_output" != *"--scope <scope>"* ]]; then
+    printf 'Claude Code MCP command format is not recognized; existing configuration was not changed.\n' >&2
+    client_command_hint claude
+    return
+  fi
+
+  if (cd -- "$PROJECT_DIR" && claude mcp get "$SERVER_NAME" >/dev/null 2>&1); then
+    printf 'Claude Code already has %s; preserved the existing configuration.\n' "$SERVER_NAME"
+    return
+  fi
+
+  if (cd -- "$PROJECT_DIR" && claude mcp add --scope project "$SERVER_NAME" \
+    -e "SOCAR_ANDROID_WORKSPACE=$PROJECT_DIR" -- "$JAVA_EXECUTABLE" -jar "$JAR_PATH"); then
+    printf 'Configured Claude Code at project scope: %s\n' "$PROJECT_DIR"
+  else
+    printf 'Claude Code configuration failed; the verified JAR remains installed. Run manually:\n' >&2
+    client_command_hint claude
+  fi
+}
+
+configure_codex() {
+  if ! command -v codex >/dev/null 2>&1; then
+    printf 'Codex CLI not found; skipped client configuration.\n'
+    client_command_hint codex
+    return
+  fi
+
+  local help_output
+  help_output="$(codex mcp add --help 2>&1 || true)"
+  if [[ "$help_output" != *"<NAME>"* || "$help_output" != *"<COMMAND>"* ]]; then
+    printf 'Codex MCP command format is not recognized; existing configuration was not changed.\n' >&2
+    client_command_hint codex
+    return
+  fi
+
+  if codex mcp get "$SERVER_NAME" --json >/dev/null 2>&1; then
+    printf 'Codex already has %s; preserved the existing configuration.\n' "$SERVER_NAME"
+    return
+  fi
+
+  if codex mcp add "$SERVER_NAME" --env "SOCAR_ANDROID_WORKSPACE=$PROJECT_DIR" -- \
+    "$JAVA_EXECUTABLE" -jar "$JAR_PATH"; then
+    printf 'Configured Codex (current CLI mcp add scope: user).\n'
+  else
+    printf 'Codex configuration failed; the verified JAR remains installed. Run manually:\n' >&2
+    client_command_hint codex
+  fi
+}
+
+if [[ "$CONFIGURE_CLIENTS" == true ]]; then
+  configure_claude
+  configure_codex
+else
+  printf 'Client configuration skipped by request.\n'
+fi
+
+printf '\nInstallation complete. Restart configured MCP clients before using the server.\n'

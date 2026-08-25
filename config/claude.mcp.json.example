@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "socar-protocol-codegen": {
+      "type": "stdio",
+      "command": "/absolute/path/to/java",
+      "args": [
+        "-jar",
+        "/absolute/path/to/protocol-codegen-mcp-all.jar"
+      ],
+      "env": {
+        "SOCAR_ANDROID_WORKSPACE": "/absolute/path/to/socar-android-library"
+      }
+    }
+  }
+}

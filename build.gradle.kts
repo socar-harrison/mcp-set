@@ -15,19 +15,24 @@ kotlin {
 
 dependencies {
     implementation("io.modelcontextprotocol:kotlin-sdk:0.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
-    implementation("io.ktor:ktor-server-netty:3.1.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("ch.qos.logback:logback-classic:1.5.12")
+
+    testImplementation(kotlin("test"))
 }
 
 application {
-    mainClass.set("socar.mcp.calendar.MainKt")
+    mainClass.set("socar.mcp.protocol.MainKt")
 }
 
 tasks.shadowJar {
-    archiveBaseName.set("google-calendar-mcp")
+    archiveBaseName.set("protocol-codegen-mcp")
     archiveClassifier.set("all")
     archiveVersion.set("")
     mergeServiceFiles()
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
